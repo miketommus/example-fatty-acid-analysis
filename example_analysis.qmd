@@ -61,6 +61,27 @@ This section allows you to customize the analysis routine based on the particula
 #| warning: false
 #| code-fold: false
 
+# Provide a mapping of the name of data files and the names of 
+# relevant variables within them. 
+# Below is the code that runs to combine all data files into a master dataframe. 
+
+# Create lists of variables to pull from sample_list and gravimetry sheet
+# format is names = "objects" & "objects" must match the colnames in your data
+# do not modify names
+sample_vars <- list(
+    sample_ID = "sample_ID",
+    tissue_type = "tissue_type",
+    treatment = "treatment",
+    date_extracted = "date_extracted"
+)
+
+grav_vars <- list(
+    sample_ID = "sample_ID",
+    tiss_dry_mass = "tiss_dry_mass",
+    int_std_conc = "int_std_conc",
+    total_lipid = "total_lipid"
+)
+
 # Provide the location of data files for your sample list, GCMS results, and 
 # gravimetry results.
 files <- list(
@@ -68,40 +89,6 @@ files <- list(
     gcms_results = "data/example_gcms_results.xlsx",
     grav_results = "data/example_gravimetry.xlsx"
 )
-
-# Choose a style for your fatty acid names by uncommenting only one line below.
-# See ?FATools::pretty_fa_names for details. 
-style = 1       # 16:1w11c
-# style = 2     # 16:1 w11c
-# style = 3     # 16:1 (w-11) c
-# style = 4     # C16:1w11c
-# style = 5     # C16:1 w11c
-# style = 6     # C16:1 (w-11) c
-
-# Source the appropriate lookup table for the external standards used
-source('StandardsNuCheck566C.r')
-
-# Change the character below to indicate the FA name of the internal standard used.
-int_std_fa <- FATools::pretty_fa_names("19:0", style = style)
-
-# Input, in ascending order, external standard serial dilution values in ng/uL
-ext_std_dil <- c(15, 50, 100, 250)
-
-# Source the lookup table for GCMS response factors for instrument used.
-source('RFMapShimadzuQP2020DB23.r')
-
-# Set the volume of lipid extract in mL
-vol_lip_ext = 1.5
-
-# Set the volume of lipid extract removed for derivatization in mL
-vol_deriv = 1
-
-# Set the volume of internal standard added to each sample in uL
-vol_int_std = 70
-
-# Set the lower threshold for FA to include in your analysis in decimal percent
-# e.g. To include all FA >= 1% use 0.01 OR to include FA >= 5% use 0.05
-filter = 0.01
 
 # Set treatment names and colors for plots
 # "treatment" must match how treatments are labled in your data
@@ -114,6 +101,40 @@ treatments <- tribble(
     "treatment_D", "Treatment D", "#00C0AF",
     "treatment_E", "Treatment E", "#00B0F6",
 )
+
+# Choose a style for your fatty acid names by uncommenting only one line below.
+# See ?FATools::pretty_fa_names for details. 
+style = 1       # 16:1w11c
+# style = 2     # 16:1 w11c
+# style = 3     # 16:1 (w-11) c
+# style = 4     # C16:1w11c
+# style = 5     # C16:1 w11c
+# style = 6     # C16:1 (w-11) c
+
+# Set the lower threshold for FA to include in your analysis in decimal percent
+# e.g. To include all FA >= 1% use 0.01 OR to include FA >= 5% use 0.05
+filter = 0.01
+
+# Change the character below to indicate the FA name of the internal standard used.
+int_std_fa <- FATools::pretty_fa_names("19:0", style = style)
+
+# Input, in ascending order, external standard serial dilution values in ng/uL
+ext_std_dil <- c(15, 50, 100, 250)
+
+# Set the volume of lipid extract in mL
+vol_lip_ext = 1.5
+
+# Set the volume of lipid extract removed for derivatization in mL
+vol_deriv = 1
+
+# Set the volume of internal standard added to each sample in uL
+vol_int_std = 70
+
+# Source the appropriate lookup table for the external standards used
+source('StandardsNuCheck566C.r')
+
+# Source the lookup table for GCMS response factors for instrument used.
+source('RFMapShimadzuQP2020DB23.r')
 
 
 # VARIABLES TO ADD IN FUTURE
@@ -186,6 +207,7 @@ This section performs some very basic validations checks of user imputs from SET
 Should support error checking for:
 
 * FA not detected and/or properly converted by pretty_fa_names() function
+* sample IDs match
 * Necessary information is contained in data files for the analysis.
 * That treatment names match data files
 * That LUTs are sourced and match the data
@@ -204,8 +226,11 @@ Imports the raw data files from "/data" directory.
 #| warning: false
 #| code-fold: false
 
-# Reads in data files
-sample_list <- xlsx_na_fix(files$sample_list)
+# Reads in data files and renames columns as needed
+sample_list <- xlsx_na_fix(files$sample_list) %>%
+    rename(
+        all_of(unlist(sample_vars))
+    )
 
 gcms_results <- xlsx_na_fix(files$gcms_results) %>%
     rename(
@@ -214,7 +239,15 @@ gcms_results <- xlsx_na_fix(files$gcms_results) %>%
         sample_name = 'Sample Name'
         )
 
-grav_results <- xlsx_na_fix(files$grav_results)
+grav_results <- xlsx_na_fix(files$grav_results) %>%
+    rename(
+        all_of(unlist(grav_vars))
+    )
+
+# Standardizes sample_ID data type
+sample_list$sample_ID <- as.character(sample_list$sample_ID)
+gcms_results$sample_ID <- as.character(gcms_results$sample_ID)
+grav_results$sample_ID <- as.character(grav_results$sample_ID)
 
 # Examines imported data
 glimpse(sample_list)
@@ -250,21 +283,14 @@ master_df <- gcms_results %>%
     left_join(                          # select cols we want from sample_list
         select(
             sample_list,
-            "sample_ID",
-            "tissue_type",
-            "treatment",
-            "date_extracted"
+            objects(sample_vars)
         ),
         by = join_by(sample_ID == sample_ID)
     ) %>%
     left_join(                         # select cols we want from grav_results
         select(
             grav_results,
-            "sample_ID",
-            "tiss_dry_mass", 
-            "int_std_conc",
-            "total_lipid",
-            "int_std_conc"
+            objects(grav_vars)
         ),
         by = join_by(sample_ID == sample_ID)
     ) %>%
@@ -404,8 +430,9 @@ This section uses the previously calculated concentrations to calculate FA propo
 master_df_prop <- master_df %>% mutate(
     conc_sums = rowSums(
         select(., 
-        grep(fa_finder, colnames(master_df))
-        )
+            grep(fa_finder, colnames(master_df))
+        ),
+        na.rm = TRUE
     )
 ) %>% 
     mutate(
@@ -463,6 +490,7 @@ long_conc$FA %<>% factor(levels = fa_order)
 
 # Makes treatment a factor to control order in figures
 long_prop$treatment %<>% factor(levels = treatments$treatment)
+long_conc$treatment %<>% factor(levels = treatments$treatment)
 
 # Makes list of FA >= 1% of total FA
 fa_list <- filterFA(long_prop, filter = filter)
