@@ -1,0 +1,607 @@
+---
+title: "Example Fatty Acid Analysis"
+format: 
+    html: 
+        code-fold: true
+        page-layout: full
+        author: "Mike"
+        date: 2024-02-20
+        # grid:
+            # body-width: 1000px
+        fig-cap-location: bottom
+    pdf:
+        toc: false
+        documentclass: article
+        number-sections: false
+        colorlinks: true
+        mainfont: "Calibri"
+        sansfont: "Calibri"
+        fontsize: 12pt
+        geometry:
+        - nohead
+        - top=20mm
+        - left=20mm
+        - right=20mm
+        - heightrounded
+execute: 
+  echo: true
+output:
+    html_document: default
+    pdf_document: default
+---
+## OVERVIEW
+
+This exemplar script showcases how raw peak area data from a GCMS is processed into a useable form (concentration and/or proportion data). The data in the /data directory comes from a real analysis of fatty acid methyl esters (FAME) with the exception of two dummy fatty acids (FA) added for testing purposes (18:1w9t & 20:1w5).
+
+## ENVIRONMENT
+
+Prepares the R environment by loading required libraries.
+
+```{r}
+#| label: Load required libraries
+#| warning: false
+#| code-fold: false
+
+# Loads required libraries
+library(FATools) # Not available on CRAN, only GitHub
+library(readxl)
+library(magrittr)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+```
+
+## SET VARIABLES FOR ANALYSIS
+
+This section allows you to customize the analysis routine based on the particulars of your analysis.
+
+```{r}
+#| label: Set variables
+#| warning: false
+#| code-fold: false
+
+# Provide a mapping of the name of data files and the names of 
+# relevant variables within them. 
+# Below is the code that runs to combine all data files into a master dataframe. 
+
+# Create lists of variables to pull from sample_list and gravimetry sheet
+# format is names = "objects" & "objects" must match the colnames in your data
+# do not modify names
+sample_vars <- list(
+    sample_ID = "sample_ID",
+    tissue_type = "tissue_type",
+    treatment = "treatment",
+    date_extracted = "date_extracted"
+)
+
+grav_vars <- list(
+    sample_ID = "sample_ID",
+    tiss_dry_mass = "tiss_dry_mass",
+    int_std_conc = "int_std_conc",
+    total_lipid = "total_lipid"
+)
+
+# Provide the location of data files for your sample list, GCMS results, and 
+# gravimetry results.
+files <- list(
+    sample_list = "data/example_sample_list.xlsx",
+    gcms_results = "data/example_gcms_results.xlsx",
+    grav_results = "data/example_gravimetry.xlsx"
+)
+
+# Set treatment names and colors for plots
+# "treatment" must match how treatments are labled in your data
+# "names" & "color" are how you want treatments to be represented in plots
+treatments <- tribble(
+    ~treatment, ~name, ~color,
+    "treatment_A", "Treatment A", "#F8766D",
+    "treatment_B", "Treatment B", "#C99800",
+    "treatment_C", "Treatment C", "#6BB100",
+    "treatment_D", "Treatment D", "#00C0AF",
+    "treatment_E", "Treatment E", "#00B0F6",
+)
+
+# Choose a style for your fatty acid names by uncommenting only one line below.
+# See ?FATools::pretty_fa_names for details. 
+style = 1       # 16:1w11c
+# style = 2     # 16:1 w11c
+# style = 3     # 16:1 (w-11) c
+# style = 4     # C16:1w11c
+# style = 5     # C16:1 w11c
+# style = 6     # C16:1 (w-11) c
+
+# Set the lower threshold for FA to include in your analysis in decimal percent
+# e.g. To include all FA >= 1% use 0.01 OR to include FA >= 5% use 0.05
+filter = 0.01
+
+# Change the character below to indicate the FA name of the internal standard used.
+int_std_fa <- FATools::pretty_fa_names("19:0", style = style)
+
+# Input, in ascending order, external standard serial dilution values in ng/uL
+ext_std_dil <- c(15, 50, 100, 250)
+
+# Set the volume of lipid extract in mL
+vol_lip_ext = 1.5
+
+# Set the volume of lipid extract removed for derivatization in mL
+vol_deriv = 1
+
+# Set the volume of internal standard added to each sample in uL
+vol_int_std = 70
+
+# Source the appropriate lookup table for the external standards used
+source('data/StandardsNuCheck566C.r')
+
+# Source the lookup table for GCMS response factors for instrument used.
+source('data/RFMapShimadzuQP2020DB23.r')
+
+
+# VARIABLES TO ADD IN FUTURE
+# FUTURE: set units
+# FUTURE: compare internal std conc to theoretical
+# FUTURE: allow expanding treatments, tissue-types, etc
+# FUTURE: allow calculating proportions from peak areas
+
+```
+
+## HELPER FUNCTIONS
+
+This section holds all helper functions used throughout the analysis script. 
+
+```{r}
+#| label: Helper functions
+#| warning: false
+
+# Function to import data & standardize NAs
+xlsx_na_fix <- function(file, sheet = NULL){
+    read_xlsx(file, sheet = sheet, na = c("NA", "", "N/A"))
+}
+
+# Creates regular expression to find FA names
+fa_finder <- "[1-9]?[0-9][[:punct:]][0-9][1-9]?"
+
+# Creates table of external standard serial dilution
+exstnds <- data.frame(
+    rows = c(1:length(ext_std_dil)), 
+    concs = ext_std_dil
+    )
+
+# Creates a ggplot theme to display FA names vertically for readability
+x90 <- theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+    legend.position = "right")
+
+# Function to filter FA by those >= the decimal % in filter
+filterFA <- function (data, filter = 0.01) {
+    data %>%
+    dplyr::group_by(FA) %>%
+    dplyr::summarise(mean = mean(Proportion)) %>%
+    dplyr::filter(mean >= filter) %>%
+    dplyr::select(FA) %>%
+    unique %>%
+    as.vector
+}
+
+# Standardizes FA names in LUTs
+resp_fact_map$fa <- FATools::pretty_fa_names(resp_fact_map$fa, style = style)
+resp_fact_map$ref_fa <- FATools::pretty_fa_names(resp_fact_map$ref_fa, style = style)
+
+# Make FA names in your external std lookup table match style
+nucheck_566c$fa <- FATools::pretty_fa_names(nucheck_566c$fa, style = style)
+
+# Calcs theoretical internal standard concentration
+# qa_int_std <- qa_int_std %>%
+#     mutate(
+#         theor_conc = ((int_std_conc * vol_int_std) * (vol_deriv/vol_lip_ext)) / vol_lip_ext,
+#         yield = (.$int_std_fa / theor_conc)
+#     )
+# )
+
+```
+
+## ERROR CHECKING
+
+This section performs some very basic validations checks of user imputs from SET VARIABLES FOR ANALYSIS section above. 
+
+Should support error checking for:
+
+* FA not detected and/or properly converted by pretty_fa_names() function
+* sample IDs match
+* Necessary information is contained in data files for the analysis.
+* That treatment names match data files
+* That LUTs are sourced and match the data
+
+```{r}
+# Add some error checking.
+
+```
+
+## DATA IMPORT
+
+Imports the raw data files from "/data" directory. 
+
+```{r}
+#| label: Read in data
+#| warning: false
+#| code-fold: false
+
+# Reads in data files and renames columns as needed
+sample_list <- xlsx_na_fix(files$sample_list) %>%
+    rename(
+        all_of(unlist(sample_vars))
+    )
+
+gcms_results <- xlsx_na_fix(files$gcms_results) %>%
+    rename(
+        data_file_name = 'Data Filename',
+        sample_ID = 'Sample ID',
+        sample_name = 'Sample Name'
+        )
+
+grav_results <- xlsx_na_fix(files$grav_results) %>%
+    rename(
+        all_of(unlist(grav_vars))
+    )
+
+# Standardizes sample_ID data type
+sample_list$sample_ID <- as.character(sample_list$sample_ID)
+gcms_results$sample_ID <- as.character(gcms_results$sample_ID)
+grav_results$sample_ID <- as.character(grav_results$sample_ID)
+
+# Examines imported data
+glimpse(sample_list)
+glimpse(gcms_results)
+glimpse(grav_results)
+
+rm(files)
+
+```
+
+## DATA WRANGLE
+
+This section creates a master data frame from the imported data files. 
+
+```{r}
+#| label: Make master data frame
+#| warning: false
+#| code-fold: false
+#| echo: true
+
+# Renames FA names in gcms_results columns
+colnames(gcms_results) <- gsub(" : Area", "", colnames(gcms_results))
+
+gcms_results <- gcms_results %>%
+    rename_with(
+        ~ FATools::pretty_fa_names(., style = style),
+        grep(fa_finder, colnames(.))
+    )
+
+# Creates master df
+master_df <- gcms_results %>% 
+    select(-Flags, -sample_name) %>%    # rm these columns from gcms_results
+    left_join(                          # select cols we want from sample_list
+        select(
+            sample_list,
+            objects(sample_vars)
+        ),
+        by = join_by(sample_ID == sample_ID)
+    ) %>%
+    left_join(                         # select cols we want from grav_results
+        select(
+            grav_results,
+            objects(grav_vars)
+        ),
+        by = join_by(sample_ID == sample_ID)
+    ) %>%
+    relocate(                            # moves all FA to end of dataframe
+        grep(fa_finder, colnames(.)),
+        .after = last_col()
+        )
+
+rm(gcms_results, sample_list, grav_results)
+
+```
+
+This section calculates instrument (GCMS) response factors (RF). 
+
+```{r}
+#| label: Calculate response factors
+#| warning: false
+#| code-fold: false
+
+# Extracts peak areas for only the external standards into a temporary dataframe
+data_tmp <- master_df[exstnds$rows, ] %>% 
+    select(grep(fa_finder, colnames(.)))
+
+# Creates empty data frame to hold instrument response factors (RF)
+rfs <- data.frame(
+    fa = factor(),
+    rf = double()
+)
+
+# Iterates thru all FA in external standards & calc linear response factors
+# The "0 + concs" forces RF intercept thru origin
+for (i in 1:ncol(data_tmp)){
+
+    name <- colnames(data_tmp[ , i])
+    
+    if (!is.na(match(name, nucheck_566c$fa))) {
+        areas <- data_tmp[[i]]
+        # calculate proportion adjusted concentrations
+        concs <- exstnds$concs * as.numeric(nucheck_566c$prop[match(name, nucheck_566c$fa)])
+        rf <- lm(areas ~ 0 + concs)$coefficients[['concs']]
+        rfs <- rfs %>% add_row(fa = name, rf = rf)
+        rm(areas, concs, rf)
+    } else {
+        # add 0 to df
+        rfs <- rfs %>% add_row(fa = name, rf = 0)
+    }
+    
+    rm(name)
+}
+
+rm(data_tmp, i)
+```
+
+This section takes calculated RFs and fill in gaps in the data using the RF Mapping LUT for your chosen external standard. 
+
+```{r}
+#| label: Map response factors to FA not in standards.
+#| warning: false
+#| code-fold: false
+
+# Interates through all RFs and maps RFs from FA in standards, to those not in standards.
+# Uses externally sourced RF lookup table to do the mapping. 
+for (i in 1:nrow(rfs)) {
+    if (is.na(rfs$rf[i]) | rfs$rf[i] == 0) {
+        rfs$rf[i] <- rfs$rf[
+            match(
+                resp_fact_map$ref_fa[
+                    match(
+                        rfs$fa[i],
+                        resp_fact_map$fa
+                    )
+                ],
+                rfs$fa
+            )
+        ]
+    } else {
+        # do nothing.
+    }
+}
+
+rm(i)
+
+```
+
+This section calculates FA concentrations and then adjusts them for the mass of tissue extracted. 
+
+We use the following equation to calculate mass adjusted concentrations:
+
+$$
+\frac{ng \text{ FA}}{\mu L \text{ FAME}} * 
+\frac{1.5 * 10^3 \mu L \text{ FAME}}{\text{gcvial}} * 
+\frac{\text{gcvial}}{0.\overline{6} \text{ extract}} * 
+\frac{\text{ extract}}{mg \text{ DW}} * 
+\frac{mg \text{ FA}}{10^6 ng \text{ FA}} * 
+\frac{10^3 mg \text{ DW}}{g \text{ DW}} 
+= \frac{mg \text{ FA}}{g \text{ DW}} 
+$$
+
+```{r}
+#| label: Calculate concentrations
+#| warning: false
+#| code-fold: false
+
+# Iterates through all RF values & calculates concentrations for all FA
+master_df <- master_df %>% mutate(
+    across(
+        grep(fa_finder, colnames(master_df)),
+        ~ . / rfs$rf[match(cur_column(), rfs$fa)]
+    )
+)
+
+# Extracts and removes internal standard from dataset
+internal_std <- master_df %>%
+    select(sample_ID, grep("19:0", colnames(.)))
+
+master_df <- master_df %>%
+    select(-grep("19:0", colnames(.)))
+
+# Adjusts concentrations for mass of tissue extracted
+master_df <- master_df %>%
+    mutate(
+        across(
+            grep(fa_finder, colnames(master_df)),
+            ~ . * (vol_lip_ext / (vol_deriv / vol_lip_ext)) * (1 / tiss_dry_mass)
+        )
+    )
+
+```
+
+This section uses the previously calculated concentrations to calculate FA proportions.
+```{r}
+#| label: Calculate proportions
+#| warning: false
+#| code-fold: false
+
+# Calculates proportions from concentrations
+master_df_prop <- master_df %>% mutate(
+    conc_sums = rowSums(
+        select(., 
+            grep(fa_finder, colnames(master_df))
+        ),
+        na.rm = TRUE
+    )
+) %>% 
+    mutate(
+        across(
+            all_of(
+                grep(fa_finder, colnames(master_df))
+            ),
+        ~ . / conc_sums
+        )
+    ) %>%
+    select(-conc_sums)
+
+```
+
+This section cleans up unnecessary variables from the environment.
+```{r}
+#| label: Clean up environment
+#| warning: false
+#| code-fold: false
+
+# Cleans up uneeded variables from the environment
+rm(ext_std_dil, style, vol_deriv, vol_int_std,
+    vol_lip_ext, xlsx_na_fix, resp_fact_map, exstnds)
+
+```
+
+This section makes the data long & tidy for easy plotting.
+
+```{r}
+#| label: Make long/tidy data
+#| warning: false
+#| code-fold: false
+
+# Makes data long & removes external standards
+long_conc <- master_df %>%
+    filter(tissue_type != "NA") %>%
+    pivot_longer(
+        cols = grep(fa_finder, colnames(.)),
+        names_to = "FA", 
+        values_to = "Concentration"
+    )
+
+long_prop <- master_df_prop %>%
+    filter(tissue_type != "NA") %>%
+    pivot_longer(
+        cols = grep(fa_finder, colnames(.)),
+        names_to = "FA", 
+        values_to = "Proportion"
+    )
+
+# Makes FA names a factor so they plot in order of GC retention time
+fa_order <- unique(long_conc$FA)
+long_prop$FA %<>% factor(levels = fa_order)
+long_conc$FA %<>% factor(levels = fa_order)
+
+# Makes treatment a factor to control order in figures
+long_prop$treatment %<>% factor(levels = treatments$treatment)
+long_conc$treatment %<>% factor(levels = treatments$treatment)
+
+# Makes list of FA >= 1% of total FA
+fa_list <- filterFA(long_prop, filter = filter)
+
+```
+
+## DATA VISUALIZATION
+
+This section makes some plots.
+
+```{r}
+#| label: Concentration of all FA
+#| warning: false
+#| echo: true
+#| fig-cap: "Boxplot showing concentration of FA by treatment & tissue type. Concentrations are mg FA per g of tissue dry weight."
+#| column: page
+#| out-width: 75%
+
+# Concentration data for all FAs
+long_conc %>%
+    ggplot(aes(FA, Concentration)) +
+    geom_boxplot(aes(color = treatment)) +
+    facet_wrap(vars(tissue_type), ncol = 1, scales = "free") +
+    labs(y = "Concentration mg FA / g DW", x = "FA") +
+    x90 +
+    scale_color_manual(
+        values = treatments$color,
+        labels = treatments$name
+    )
+
+
+```
+```{r}
+#| label: Proportion of All FA
+#| warning: false
+#| echo: true
+#| fig-cap: "Boxplot showing proportion of FA by treatment & tissue type. Proportions are decimal % of total FA, calculated from concentrations."
+#| column: page
+#| out-width: 75%
+
+# Proportion of total FA by treatment & tissue type
+long_prop %>%
+    ggplot(aes(FA, Proportion)) +
+    geom_boxplot(aes(color = treatment)) +
+    facet_wrap(vars(tissue_type), ncol = 1, scales = "free") +
+    labs(y = "Proportion (% of Total FA)", x = "FA") +
+    x90 +
+    scale_color_manual(
+        values = treatments$color,
+        labels = treatments$name
+    )
+
+
+```
+```{r}
+#| label: Concentration of Limited FA
+#| warning: false
+#| echo: true
+#| fig-cap: "Boxplot showing concentration of FA by treatment & tissue type. Concentrations are mg FA per g of tissue dry weight."
+#| column: page
+#| out-width: 75%
+
+# Concentration of total FA by treatment & tissue type
+long_conc %>%
+    filter(FA %in% fa_list$FA) %>%
+    ggplot(aes(FA, Concentration)) +
+    geom_boxplot(aes(color = treatment)) +
+    facet_wrap(vars(tissue_type), ncol = 1, scales = "free") +
+    labs(y = "Concentration mg FA / g DW", x = "FA") +
+    x90 +
+    scale_color_manual(
+        values = treatments$color,
+        labels = treatments$name
+    )
+
+
+```
+
+```{r}
+#| label: Proportion of Limited FA
+#| warning: false
+#| echo: true
+#| fig-cap: "Boxplot showing proportion of FA by treatment & tissue type. Proportions are decimal % of total FA, calculated from concentrations"
+#| column: page
+#| out-width: 75%
+
+# Proportion of total FA by treatment & tissue type
+long_prop %>%
+    filter(FA %in% fa_list$FA) %>%
+    ggplot(aes(FA, Proportion)) +
+    geom_boxplot(aes(color = treatment)) +
+    facet_wrap(vars(tissue_type), ncol = 1, scales = "free") +
+    labs(y = "Proportion (% of Total FA)", x = "FA") +
+    x90 +
+    scale_color_manual(
+        values = treatments$color,
+        labels = treatments$name
+    )
+
+```
+
+## FURTHER ANALYSIS
+
+This section would contain study-specific code to create plots, run stats, and otherwise analyze data. 
+
+```{r}
+#| label: Further analyses
+#| warning: false
+
+# More plots
+
+# Statistical Analysis
+
+```
