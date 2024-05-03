@@ -36,8 +36,10 @@ ext_std_concs <- c(15, 50, 100, 250)
 # DATA IMPORT
 #==============================================================================
 # Read in GC/MS peak area data
-file <- "path/to/your/file.csv"
+gcms_data <- "path/to/your/file.csv"
+compound_table <- "path/to/your/compound_table"
 data <- read.csv(file)
+compounds <- read.csv(compound_table)
 
 # Filter data to just compound data
 compound_data <- data[FATools::find_fa_name(colnames(data))]
@@ -46,12 +48,12 @@ compound_data <- data[FATools::find_fa_name(colnames(data))]
 colnames(compound_data) %<>% convert_fa_name()
 
 # Source response factor mapping for instrument
-source("test_rf_map.R")
+source("/data/example_rf_map.R")
 test_rf_map$fa %<>% convert_fa_name()
 test_rf_map$ref_fa %<>% convert_fa_name()
 
 # Source proportion information for external standards
-source("test_ext_stds_props.R")
+source("data/example_ext_std_contents.R")
 test_nucheck_566c$fa %<>% convert_fa_name()
 test_nucheck_566c$prop %<>% as.numeric()
 

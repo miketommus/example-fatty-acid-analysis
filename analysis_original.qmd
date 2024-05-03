@@ -131,10 +131,10 @@ vol_deriv = 1
 vol_int_std = 70
 
 # Source the appropriate lookup table for the external standards used
-source('data/StandardsNuCheck566C.r')
+source('data/example_ext_std_contents_tibble.R')
 
 # Source the lookup table for GCMS response factors for instrument used.
-source('data/RFMapShimadzuQP2020DB23.r')
+source('data/example_rf_map_tibble.R')
 
 
 # VARIABLES TO ADD IN FUTURE
