@@ -29,26 +29,36 @@ library(magrittr)   # pipe operator
 #==============================================================================
 # SET VARIABLES FOR ANALYSIS
 #==============================================================================
+# File path to GCMS data
+gcms_data <- "data/example_gcms_results.xlsx"
+
 # Concentrations of external standards (ng/uL)
 ext_std_concs <- c(15, 50, 100, 250)
+
+#==============================================================================
+# HELPER FUNCTIONS
+#==============================================================================
+# Reads in data differently depending on file extension
+read_in_file <- function(file_path) {
+  if (grepl(".xlsx", file_path)) {
+    readxl::read_xlsx(file_path)
+
+  } else if (grepl(".csv", file_path)) {
+    read.csv(file_path)
+
+  } else {
+    stop("File type not supported.")
+  }
+}
 
 #==============================================================================
 # DATA IMPORT
 #==============================================================================
 # Read in GC/MS peak area data
-gcms_data <- "path/to/your/file.csv"
-compound_table <- "path/to/your/compound_table"
-data <- read.csv(file)
-compounds <- read.csv(compound_table)
-
-# Filter data to just compound data
-compound_data <- data[FATools::find_fa_name(colnames(data))]
-
-# Standardize fatty acid names in column names
-colnames(compound_data) %<>% convert_fa_name()
+data <- read_in_file(gcms_data)
 
 # Source response factor mapping for instrument
-source("/data/example_rf_map.R")
+source("data/example_rf_map.R")
 test_rf_map$fa %<>% convert_fa_name()
 test_rf_map$ref_fa %<>% convert_fa_name()
 
@@ -57,8 +67,17 @@ source("data/example_ext_std_contents.R")
 test_nucheck_566c$fa %<>% convert_fa_name()
 test_nucheck_566c$prop %<>% as.numeric()
 
+#==============================================================================
+# DATA WRANGLE
+#==============================================================================
+# Filter data to just compound data
+compound_data <- data[FATools::find_fa_name(colnames(data))]
+
+# Standardize fatty acid names in column names
+colnames(compound_data) %<>% convert_fa_name()
+
 # Remove fatty acids without positive IDs
-compound_data %<>% select(any_of(test_rf_map$fa))
+# compound_data %<>% select(any_of(test_rf_map$fa))
 
 #==============================================================================
 # POST-PROCESSING
@@ -70,25 +89,26 @@ response_factors <- calc_gc_response_factor(
   ext_std_contents = test_nucheck_566c
 )
 
-# *** Above is not setting the col names of rf_table correctly.
-colnames(response_factors) <- c("fa", "rf")
-response_factors$rf %<>% as.numeric()
-
-# Convert Areas to Conc
+# Convert Areas to Conc (ng/uL)
 concentrations <- convert_area_to_conc(
   data = compound_data,
   rf_table = response_factors,
   rf_map = test_rf_map
 )
-concentrations <- cbind(data[1:4], concentrations)
 
-# Convert Conc to Prop
+# Convert Conc to Prop (mass %)
 proportions <- convert_result_to_prop(
-  data = compound_data[-grep("19:0", colnames(compound_data))],
+  data = concentrations[-grep("19:0", colnames(concentrations))],
   na.rm = TRUE
 )
+
+# Bind sample info from data with new data frames
+concentrations <- cbind(data[1:4], concentrations)
 proportions <- cbind(data[1:4], proportions)
 
 #==============================================================================
-# HELPER FUNCTIONS
+# DATA EXPORT
 #==============================================================================
+# Export the data
+# write.csv(concentrations, file = "/path/to/your/final/prop_data.csv")
+# write.csv(proportions, file = "/path/to/your/final/conc_data.csv")
