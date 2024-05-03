@@ -43,7 +43,7 @@ ext_std_concs = c(15, 50, 100, 250)
 #==============================================================================
 
 # Read in GC/MS peak area data
-file <-"C:\\Users\\puter\\Documents\\codeprojects\\FATools_test_\\example_gcms_peak_areas.csv"
+file <-"path/to/your/file.csv"
 data <- read.csv(file)
 
 # Filter data to just compound data
