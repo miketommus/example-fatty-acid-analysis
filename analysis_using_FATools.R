@@ -5,7 +5,7 @@
 # | |  | | | || | (_) | (_) | \__ \
 # \_|  \_| |_/\_/\___/ \___/|_|___/
 
-# built with FATools v0.1 (beta)
+# built with FATools v0.1.0 (beta)
 #==============================================================================
 # TITLE:
 #   Example Fatty Acid GC/MS Data Post-Processing
