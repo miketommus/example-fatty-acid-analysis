@@ -59,12 +59,12 @@ data <- read_in_file(gcms_data)
 
 # Source response factor mapping for instrument
 source("data/example_rf_map.R")
-test_rf_map$fa %<>% convert_fa_name()
-test_rf_map$ref_fa %<>% convert_fa_name()
+test_rf_map$fa %<>% convert_fa_name(notation = "w")
+test_rf_map$ref_fa %<>% convert_fa_name(notation = "w")
 
 # Source proportion information for external standards
 source("data/example_ext_std_contents.R")
-test_nucheck_566c$fa %<>% convert_fa_name()
+test_nucheck_566c$fa %<>% convert_fa_name(notation = "w")
 test_nucheck_566c$prop %<>% as.numeric()
 
 #==============================================================================
@@ -74,7 +74,7 @@ test_nucheck_566c$prop %<>% as.numeric()
 compound_data <- data[FATools::find_fa_name(colnames(data))]
 
 # Standardize fatty acid names in column names
-colnames(compound_data) %<>% convert_fa_name()
+colnames(compound_data) %<>% convert_fa_name(notation = "w")
 
 # Remove fatty acids without positive IDs
 # compound_data %<>% select(any_of(test_rf_map$fa))
