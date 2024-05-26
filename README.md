@@ -1,4 +1,4 @@
-# **Example Fatty Acid Analyses Using R**
+# **Example Fatty Acid Analysis Using R**
 
 ## What is this?
 
@@ -28,7 +28,7 @@ I suggest you step through the code with the example data first. Once you unders
 |---|---|
 |*example_gcms_results*|chromatogram compound peak areas|
 |*example_sample_list*|general information about the example samples (IDs, tissue type, treatments)|
-|*exmaple_gravimetry*|results from gravimetric measurement of total lipid. Includes the mass of tissue extracted.|
+|*example_gravimetry*|results from gravimetric measurement of total lipid. Includes the mass of tissue extracted.|
 |*example_compound_table*|contains information about external standards & compounds needed for quantitation|
 
 ## How do I copy the repo?
