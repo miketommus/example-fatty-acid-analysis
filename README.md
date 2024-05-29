@@ -31,6 +31,39 @@ I suggest you step through the code with the example data first. Once you unders
 |*example_gravimetry*|results from gravimetric measurement of total lipid. Includes the mass of tissue extracted.|
 |*example_compound_table*|contains information about external standards & compounds needed for quantitation|
 
+Here's a high-level view of what's happening in the example script:
+
+```mermaid
+flowchart TD
+A{GC/MS}
+B[/Chromatogram Peak Areas/]:::data
+C(["FATools::calc_gc_response_factors()"]):::func
+D(["FATools::convert_area_to_conc()"]):::func
+F[/"compound_table.csv"/]:::data
+H(["FATools::adjust_conc_for_tissue_mass()"]):::func
+I[/"Sample Information"/]:::data
+J["Tissue Concentrations"]:::result
+K["Proportions"]:::result
+L(["FATools::convert_result_to_prop()"]):::func
+
+A-->|data export| B
+B -->|"Peak Areas: Standards"| C
+B -->|"Peak Areas: Samples"| D
+C-->|"Response Factors"| D
+D-->|"Compound Concentrations"| H
+F -->|"External Standards Proportions"| C
+F-->|"Response Factor Mapping"|D
+F-->|"Compound List"| A
+I-->|Mass of Extracted Tissue| H
+H--> J
+H--> L
+L--> Kv
+
+classDef data stroke:#787276, stroke-width:3
+classDef result stroke:#000, stroke-width:3
+classDef func fill:#ff9933
+```
+
 ## How do I copy the repo?
 
 The easist way is to use Git from your terminal:
